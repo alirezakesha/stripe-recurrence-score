@@ -1,6 +1,6 @@
 # STRIP — merchant subscription / recurrence analysis
 
-Thesis codebase for **merchant-level subscription behaviour** from Stripe-style payment panels: raw payments are cleaned and merged with merchant metadata, **pseudo-labels** are derived from payment-type mix, **hand-crafted recurrence features** and **aligned time series** feed tabular models, **MiniROCKET** (local `rocket/`), optional **SAX** bag-of-symbols features, and an optional **periodic positional Transformer**. Outputs include confusion matrices, precision–recall curves, cosine-similarity candidate lists, and business-facing conversion estimates.
+Thesis codebase for **merchant-level subscription behaviour** from Stripe-style payment panels: raw payments are cleaned and merged with merchant metadata, **pseudo-labels** are derived from payment-type mix, **hand-crafted recurrence features**, optional **SAX** bag-of-symbols features, and a **periodic positional Transformer** on aligned daily series (pooled embeddings can be concatenated with tabular features for a second-stage **Random Forest**). Outputs include confusion matrices, precision–recall curves, cosine-similarity candidate lists, and business-facing conversion estimates.
 
 ---
 
@@ -31,7 +31,7 @@ End-to-end steps (see `Stipe_final.ipynb`):
 6. **Feature extraction loop**: group by `merchant` and pass each group to `merchant_recurring_features` (daily resampling, gaps, autocorrelations, etc.; see below).
 7. **Missing values**: numeric feature matrix is filled (e.g. `fillna(0)`) before similarity and sklearn models.
 
-For **MiniROCKET** and the **Transformer**, per-merchant **daily total volume** is additionally materialized on a **common calendar grid** between global `min_date` and `max_date` so every merchant has the same sequence length for convolutional / rocket transforms.
+For the **Transformer** (and related sequence experiments such as SAX), per-merchant **daily total volume** is materialized on a **common calendar grid** between global `min_date` and `max_date` so aligned series share one timeline.
 
 ---
 
@@ -86,26 +86,26 @@ Standard learned positions do not encode **billing-period structure**. The noteb
 | Approach | Mechanism |
 |----------|-----------|
 | **Hand-crafted features** | Variable-length history is **summarized** into scalars (autocorr, gaps, CV, etc.); no sequence model. |
-| **MiniROCKET path** | All merchants share the **same** `min_date`–`max_date` daily vector length; no per-sample length issue at transform time. |
-| **Transformer (`MerchantDataset`)** | Each series is **right-padded with zeros** to `max_len`; a **boolean padding mask** marks padded positions for the model. |
-| **SAX pipeline (optional in notebook)** | **PAA + symbolization + bag-of-symbols** yields a **fixed-size** vector for any input length (with interpolation when the series is shorter than the number of PAA segments). |
+| **Aligned daily series** | A **fixed** `min_date`–`max_date` grid gives every merchant the same length **before** the Transformer; this is the primary path in the current pipeline (not MiniROCKET). |
+| **Transformer (`MerchantDataset`)** | When sequences still differ, each is **right-padded with zeros** to `max_len`; a **boolean padding mask** marks padded positions for attention. |
+| **SAX pipeline (optional in notebook)** | **PAA + symbolization + bag-of-symbols** yields a **fixed-size** vector for any raw length (with interpolation when the series is shorter than the number of PAA segments). |
 
 ---
 
-## 6. Methods compared (tabular run, saved notebook outputs)
+## 6. Methods compared (`Stipe_final.ipynb`)
 
-The numbers below are **test-set accuracy** (and **PR-AUC** where computed) from executed cells in `Stipe_final.ipynb` for **hand-crafted numeric features** only (`subscription_ratio`, `business_size`, and `industry` excluded from the design matrix for classification). Splits and class ratios follow the notebook (high-proxy vs. low-proxy merchants with controlled sampling). **Re-running the notebook will change** exact figures slightly due to random splits.
+The table summarizes **test accuracy** (percent, rounded) for the main modelling paths in `Stipe_final.ipynb`: pseudo-labeled merchants, held-out test split, and **Random Forest** where features are tabular (hand-crafted and/or SAX and/or Transformer **pooled embeddings**). The **periodic Transformer** row is **end-to-end** sequence classification on the aligned daily series. Figures can move slightly if you re-run cells (random splits, training noise).
 
-| Method | Test accuracy | Train accuracy | Notes |
-|--------|----------------:|----------------:|--------|
-| **Ridge classifier** | **0.792** | 0.794 | Linear baseline on engineered features. |
-| **Decision tree** | **0.820** | 0.826 | Stronger nonlinear splits; importances highlight monthly autocorr. |
-| **Random forest** | **0.790** | 0.813 | Test **precision–recall AUC ≈ 0.678** (positive = high-proxy class). |
-| **MiniROCKET** | — | — | Fitted on **calendar-aligned** daily series; in the current main training path, rocket outputs are **commented out** of the sklearn feature matrix—enable concatenation to evaluate end-to-end. |
-| **Periodic Transformer** | — | — | Implemented in-notebook (`PeriodicMerchantTransformer` + masked training); **no accuracy stream is checked into the JSON**—run the transformer cells on CPU/GPU to populate metrics. |
-| **SAX + tabular (optional)** | — | — | Notebook cells build **SAX** vectors and optional **concatenation** with hand-crafted (and transformer embeddings if you export them); metrics depend on your chosen classifier and run. |
+| Method | Test accuracy (≈) | Notes |
+|--------|------------------:|--------|
+| **Hand-crafted + Random Forest** | **79%** | Scalar recurrence / mix features only (same RF family as in the notebook). |
+| **SAX only + Random Forest** | **50%** | Symbolic aggregate approximation → fixed BoW vector; weak alone on this task. |
+| **Periodic Transformer (sequence classifier)** | **82%** | `PeriodicMerchantTransformer`: multi-scale conv + periodic PE + relative position bias + padding mask. |
+| **Hand-crafted + Transformer embedding + RF** | **83.3%** | Pooled sequence embedding concatenated with hand-crafted columns, then **Random Forest** on the fused matrix (best tabular stack in your runs). |
 
-At a glance, **decision trees** achieve the **highest test accuracy** among the reported sklearn baselines on this split, while **random forest** exposes **ranking quality** via PR-AUC for the minority positive class.
+The notebook also trains **Ridge** and **Decision tree** baselines on hand-crafted features and reports **precision–recall AUC** for Random Forest on the subscription-positive class (useful for ranking despite headline accuracy).
+
+**At a glance:** SAX alone is near chance for this label noise, the **Transformer** captures temporal structure (~82%), and **fusing** hand-crafted columns with Transformer embeddings pushes accuracy highest (~83%).
 
 ---
 
@@ -116,7 +116,7 @@ At a glance, **decision trees** achieve the **highest test accuracy** among the 
 | `Stipe_final.ipynb` | End-to-end notebook (main entry point) |
 | `analysis.ipynb`, `analysis copy.ipynb` | Additional exploratory analyses |
 | `subscription_candidates.ipynb` | Candidate scoring heuristics (gap / price / industry components) |
-| `rocket/` | MiniROCKET / related transforms (requires **Numba**) |
+| `rocket/` | Optional MiniROCKET code (not used in the main `Stipe_final.ipynb` pipeline; requires **Numba** if you experiment) |
 | `requirements.txt` | Python dependencies |
 
 ---
@@ -140,13 +140,16 @@ flowchart TD
     A[Raw payments + merchants] --> B[Date cleaning + merge]
     B --> C[Merchant panel + subscription_ratio proxy]
     C --> D[Hand-crafted features + similarity]
-    C --> E[Aligned daily series]
-    E --> F[MiniROCKET optional]
-    E --> G[Transformer + periodic PE + padding mask]
-    D --> H[Tabular models RF / DT / Ridge]
-    F --> H
-    G --> I[Sequence classifier]
-    H --> J[Metrics CM / PR]
+    C --> E[Aligned daily volume series]
+    E --> F[Periodic Transformer + padding mask]
+    E --> S[SAX symbolic features]
+    F --> G[Pooled sequence embedding]
+    D --> H[Random Forest / DT / Ridge]
+    S --> H
+    G --> H
+    F --> I[Sequence classifier head]
+    H --> J[Metrics CM / PR / accuracy]
+    I --> J
     D --> K[Cosine targeting candidates]
 ```
 
