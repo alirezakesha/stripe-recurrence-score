@@ -1,0 +1,47 @@
+# Virtual environments
+myenv/
+venv/
+.venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing / typing
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+
+# ML / data (uncomment if you store large artifacts locally)
+*.pt
+*.pth
+*.pdf
+# data/

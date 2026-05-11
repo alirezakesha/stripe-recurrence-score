@@ -1,0 +1,8 @@
+"1. Stripe provides a suite of payments, financial services, and business operations products, including:
+    - Subscription: APIs for creating and managing subscriptions, recurring payments, and recurring revenue. 
+    - Checkout: Prebuilt, Stripe hosted checkout page
+    - Payment Link: No-code payment
+"
+"2. Note that the product usage is not mutually exclusive. For example, a user can use both Checkout and Subscription products for one transaction."
+"3. The dataset has future merchant transaction activity from 2041-2042. The data is made up, but you can consider this to be a random sample of future merchants using Stripe. "
+"4. Each observation in the `payments` transaction volume is in cents."
