@@ -45,3 +45,5 @@ Thumbs.db
 *.pth
 *.pdf
 # data/
+analysis.ipynb
+analysis copy.ipynb
